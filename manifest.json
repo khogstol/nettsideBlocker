@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "Nettside blocker",
+  "version": "1.0.0",
+  "description": "Blocks a predefined list of domains",
+  "permissions": [
+    "declarativeNetRequest",
+    "webNavigation",
+    "storage"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "declarative_net_request": {
+    "rule_resources": [
+      {
+        "id": "blocklist",
+        "enabled": true,
+        "path": "rules.json"
+      }
+    ]
+  }
+}
