@@ -6,8 +6,15 @@ console.log("Domain Blocker loaded");
 // Subdomains count too, so "m.youtube.com" counts as "youtube.com".
 const trackedSites = [
   "youtube.com",
-  "reddit.com"
+  "reddit.com",
+  "vg.no",
+  "nrk.no"
 ];
+
+// How many times a site can be opened per day before the wait time starts.
+const limitPerDay = 10;
+// How long to wait between visits after the limit is reached. Format "hh-mm-ss".
+const timeBetween = "00-10-00";
 
 
 // ---------- Database ----------
@@ -19,7 +26,7 @@ function getDatabase() {
   if (databasePromise === null) {
     databasePromise = openDB("nettsideBlocker", 1, {
       upgrade(db) {
-        // One record per site per day: { domain: "x.com", day: "2026-11-09", count: 3 }
+        // One record per site per day: { domain: "x.com", day: "2026-11-09", count: 3, lastSeen: "14-05-30" }
         db.createObjectStore("dailyVisits", { keyPath: ["domain", "day"] });
       }
     });
@@ -27,10 +34,11 @@ function getDatabase() {
   return databasePromise;
 }
 
-// Adds 1 to today's count for the site.
+// Adds 1 to today's count for the site, and saves the time of the visit.
 async function addVisit(domain) {
   const db = await getDatabase();
   const day = getToday();
+  const time = getTime();
 
   // Read and write in the same transaction,
   // so two visits at the same time can't overwrite each other.
@@ -39,9 +47,11 @@ async function addVisit(domain) {
 
   if (record) {
     record.count = record.count + 1;
+    record.lastSeen = time;
+
     await transaction.store.put(record);
   } else {
-    await transaction.store.put({ domain: domain, day: day, count: 1 });
+    await transaction.store.put({ domain: domain, day: day, count: 1, lastSeen: time});
   }
 
   await transaction.done;
@@ -58,6 +68,19 @@ async function getTodayCount(domain) {
   return 0;
 }
 
+// Returns the time the site was last opened today, like "14-05-30",
+// or null if there is no saved time.
+async function getLastSeen(domain) {
+  const db = await getDatabase();
+  const record = await db.get("dailyVisits", [domain, getToday()]);
+
+  // Records saved before lastSeen was added don't have it.
+  if (record && record.lastSeen) {
+    return record.lastSeen;
+  }
+  return null;
+}
+
 
 // ---------- Helpers ----------
 
@@ -68,6 +91,36 @@ function getToday() {
   const month = String(now.getMonth() + 1).padStart(2, "0");
   const date = String(now.getDate()).padStart(2, "0");
   return year + "-" + month + "-" + date;
+}
+
+// Returns the current local time as text, like "14-05-30".
+function getTime() {
+  const now = new Date();
+  const hours = now.getHours();
+  const minutes = now.getMinutes();
+  const seconds = now.getSeconds();
+  return hours + "-" + minutes + "-" + seconds;
+}
+
+// Turns "hh-mm-ss" into three numbers: [hour, min, sec].
+function timeParser(time) {
+  const timeSplit = time.split("-");
+  const hour = Number(timeSplit[0]);
+  const min = Number(timeSplit[1]);
+  const sec = Number(timeSplit[2]);
+  return [hour, min, sec];
+}
+
+// Turns "hh-mm-ss" into a number of seconds. "01-30-00" gives 5400.
+function timeToSeconds(time) {
+  const [hour, min, sec] = timeParser(time);
+  return hour * 3600 + min * 60 + sec;
+}
+
+// Returns how many seconds have passed from lastSeen to currentTime.
+// Both times are "hh-mm-ss" text from the same day.
+function timeDiffrence(lastSeen, currentTime) {
+  return timeToSeconds(currentTime) - timeToSeconds(lastSeen);
 }
 
 // Returns the tracked site for a URL, or null if the URL is not tracked.
@@ -99,21 +152,48 @@ async function getPreviousSite(tabId) {
 }
 
 
-// ---------- Blocking after one visit per day ----------
+// ---------- Blocking after the daily limit ----------
 
-// A site is blocked if it was already opened today,
-// unless the tab is already on that site (the first visit is still going on).
+// A site is blocked if it has been opened limitPerDay times today,
+// or if less than timeBetween has passed since the last visit.
+// It is never blocked if the tab is already on that site (the visit is still going on).
 async function shouldBlock(site, previousSite) {
   if (site === previousSite) {
     return false;
   }
 
   const count = await getTodayCount(site);
-  return count >= 1;
+  if (count >= limitPerDay) {
+    return true;
+  }
+
+  // No saved time means no visit yet today (or an old record), so no wait time.
+  const lastSeen = await getLastSeen(site);
+  if (lastSeen === null) {
+    return false;
+  }
+
+  const secondsSinceLastSeen = timeDiffrence(lastSeen, getTime());
+  const secondsBetweenLimit = timeToSeconds(timeBetween);
+
+  return secondsSinceLastSeen < secondsBetweenLimit;
 }
 
-function showBlockedPage(tabId, site) {
-  const blockedPageUrl = chrome.runtime.getURL("blocked.html") + "?site=" + encodeURIComponent(site);
+// Sends the tab to blocked.html, with the site, today's count and the
+// last visit time in the URL, like blocked.html?site=x.com&count=3&lastSeen=14-05-30
+async function showBlockedPage(tabId, site) {
+  const count = await getTodayCount(site);
+  const lastSeen = await getLastSeen(site);
+
+  // URLSearchParams encodes the values safely for a URL.
+  const params = new URLSearchParams();
+  params.set("site", site);
+  params.set("count", String(count));
+  if (lastSeen !== null) {
+    params.set("lastSeen", lastSeen);
+  }
+
+  const blockedPageUrl = chrome.runtime.getURL("blocked.html") + "?" + params.toString();
   chrome.tabs.update(tabId, { url: blockedPageUrl });
 }
 
@@ -131,7 +211,7 @@ chrome.webNavigation.onBeforeNavigate.addListener(async function (details) {
   const previousSite = await getPreviousSite(details.tabId);
 
   if (await shouldBlock(site, previousSite)) {
-    showBlockedPage(details.tabId, site);
+    await showBlockedPage(details.tabId, site);
   }
 });
 
@@ -162,7 +242,7 @@ chrome.webNavigation.onCommitted.addListener(async function (details) {
   // Backup check, in case the page loaded before the check above finished.
   // A blocked visit is not counted.
   if (await shouldBlock(site, previousSite)) {
-    showBlockedPage(details.tabId, site);
+    await showBlockedPage(details.tabId, site);
     return;
   }
 
