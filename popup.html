@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Nettside blocker</title>
+  <style>
+    body {
+      width: 280px;
+      margin: 0;
+      padding: 12px;
+      font-family: system-ui, sans-serif;
+      font-size: 14px;
+    }
+    h1 {
+      font-size: 16px;
+      margin: 0 0 10px 0;
+    }
+    button {
+      cursor: pointer;
+    }
+    #add-current {
+      width: 100%;
+      padding: 6px;
+      margin-bottom: 8px;
+    }
+    #add-form {
+      display: flex;
+      gap: 6px;
+    }
+    #site-input {
+      flex: 1;
+      padding: 4px;
+    }
+    #message {
+      min-height: 18px;
+      margin: 6px 0;
+      color: #555;
+    }
+    #site-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    #site-list li {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 4px 0;
+      border-bottom: 1px solid #ddd;
+    }
+  </style>
+</head>
+<body>
+  <h1>Tracked sites</h1>
+
+  <button id="add-current" type="button" disabled>Add this site</button>
+
+  <form id="add-form">
+    <input id="site-input" type="text" placeholder="example.com" autocomplete="off">
+    <button type="submit">Add</button>
+  </form>
+
+  <p id="message"></p>
+
+  <ul id="site-list"></ul>
+
+  <!-- Extension pages can't run inline scripts, so the code is in popup.js. -->
+  <script type="module" src="popup.js"></script>
+</body>
+</html>

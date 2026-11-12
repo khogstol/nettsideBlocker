@@ -8,7 +8,8 @@ const trackedSites = [
   "youtube.com",
   "reddit.com",
   "vg.no",
-  "nrk.no"
+  "nrk.no",
+  "instagram.com"
 ];
 
 // How many times a site can be opened per day before the wait time starts.

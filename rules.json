@@ -13,21 +13,5 @@
         "main_frame"
       ]
     }
-  },
-  {
-    "id": 2,
-    "priority": 1,
-    "action": {
-      "type": "block"
-    },
-    "condition": {
-      "requestDomains": [
-        "instagram.com"
-      ],
-      "resourceTypes": [
-        "main_frame"
-      ]
-    }
-  }
-  
+  }  
 ]
